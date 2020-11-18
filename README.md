@@ -3,7 +3,7 @@
 
 ### Description
 
-Here is implementation of the first tutorial.
+Here is my implementation of the first tutorial.
 I have created the node with the two subscribers and the publisher in grid_world/src/grid_navigation_node.
 The callback for the position subscriber is only used to determine wether the robot reached the goal cell and prints a success message if it does.
 In the sensor measurement callback I implemented the navigation policy.
