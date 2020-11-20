@@ -2,21 +2,24 @@
 #include <std_msgs/String.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/Point.h>
-//#include <pcimr_simulation::InitPos>
-
+//#include "/home/tobias/ros_ws/tutorial_ws/devel/include/pcimr_simulation/InitPos.h"
+#include <pcimr_simulation/InitPos.h>
 bool print_b;
 ros::Publisher move_pub;
 int frames_passed = 0;
+bool finished = false;
 
-void robotPosCallback(const sensor_msgs::LaserScan &scan)
+void sensorMeasurementCallback(const sensor_msgs::LaserScan &scan)
 {
+    if(finished){
+        return;
+    }
    //set direction to north as default
    std::string direction= "N";
 
-   if(scan.ranges[1] == 0){
+   if(scan.ranges[2] <= 1){
        direction = "E";
    }
-
    std::cout << "Moving in Direction: " << direction << std::endl;
 
    std_msgs::String move_value;
@@ -25,10 +28,17 @@ void robotPosCallback(const sensor_msgs::LaserScan &scan)
    frames_passed++;
 }
 
-void sensorMeasurementCallback(const geometry_msgs::Point &pos)
+void robotPosCallback(const geometry_msgs::Point &pos)
 {
+    if(finished){
+        return;
+    }
+    
+    std::cout << "The robot is currently at position: x=" << pos.x << ", y=" << pos.y << std::endl;
+
    if(pos.x == 16 && pos.y==12)
-   {
+   {    
+      finished = true;
       std::cout << "Successfully reached target" << std::endl;
    }
 }
@@ -42,11 +52,13 @@ int main(int argc, char **argv)
    
    move_pub = n.advertise<std_msgs::String>("/move", 1);
    
-   //ros::ServiceClient client = n.serviceClient<pcimr_simulation::InitPos>("/init_pos");
-   //pcimr_simulation::InitPos srv;
-   //srv.x=2;
-   //srv.y=0;
+   ros::ServiceClient client = n.serviceClient<pcimr_simulation::InitPos>("/init_pos");
+   pcimr_simulation::InitPos srv;
+   srv.request.x=2;
+   srv.request.y=0;
    
+   std::cout << "Starting Navigation" << std::endl;
+   client.call(srv);
    ros::Rate loop_rate(50);
    while (ros::ok())
    {
@@ -54,7 +66,6 @@ int main(int argc, char **argv)
       if (frames_passed > 100)
       {
          frames_passed = 0;
-         //client.call(srv);
       }
       loop_rate.sleep();
    }
