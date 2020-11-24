@@ -1,6 +1,14 @@
 
+## Tutorial 02
+
+### Does the controller work out of the box?
+No it doesn't the topic for subscriber and publisher need to be changed.
+
+### Updates to the Controller
+My initial implementation considered only the distance to objects in front of the robot.
+For the use with omnidirectional motion I needed to change the code to use the distance in direction of the motion.
+
 ## Tutorial 01: Linux, Software & ROS
-### Description
 
 Here is my implementation of the first tutorial.
 I have created the node with the two subscribers and the publisher in grid_world/src/grid_navigation_node.
