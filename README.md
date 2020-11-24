@@ -1,6 +1,8 @@
 
 ## Tutorial 02
 
+The node for this tutorial is the "tutorial_kinematics_node" in the "tutorial_kinematics" package
+
 ### Does the controller work out of the box?
 No it doesn't the topic for subscriber and publisher need to be changed.
 
