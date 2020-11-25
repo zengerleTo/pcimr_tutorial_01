@@ -44,8 +44,6 @@ void sensorMeasurementCallback(const sensor_msgs::LaserScan &scan)
    double angle_rad = acos(dot)*sign;
    double angle_deg = angle_rad * 180/M_PI;
    int dir_idx = 122 + (int)(angle_rad/0.0163934417);
-   
-   std::cout << "Angle: " << angle_deg << " Index: " << dir_idx << std::endl;
 
    //skip calculations and don't slow down when moving in a direction not covered by the sensor
    if(dir_idx < 0 || dir_idx >= 245){
@@ -73,7 +71,7 @@ void sensorMeasurementCallback(const sensor_msgs::LaserScan &scan)
          distance = scan.ranges[i];
       }
    }
-   std::cout << "Distance: " << distance << std::endl;
+   //std::cout << "Distance: " << distance << std::endl;
    
    //set the linear velocity to zero, if robot is too close to an obstacle
    if(distance < dist_stop){
