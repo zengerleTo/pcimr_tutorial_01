@@ -1,10 +1,13 @@
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/Twist.h>
+#include <math.h>
 
 double vel_max;
 double dist_decelerate;
 double dist_stop;
+
+std::string cmd_out_topic;
 
 ros::Publisher vel_pub;
 geometry_msgs::Twist current_input_vel;
@@ -17,19 +20,60 @@ void sensorMeasurementCallback(const sensor_msgs::LaserScan &scan)
    
    //set the speed to vel_max if the robot has linear velocity
    double magnitude = std::sqrt(current_input_vel.linear.x*current_input_vel.linear.x + current_input_vel.linear.y*current_input_vel.linear.y + current_input_vel.linear.z*current_input_vel.linear.z);
-   if(magnitude != 0.0){
-      vel_out.linear.x = current_input_vel.linear.x / magnitude * vel_max;
-      vel_out.linear.y = current_input_vel.linear.y / magnitude * vel_max;
-      vel_out.linear.z = current_input_vel.linear.z / magnitude * vel_max;
+   
+   //skip calculations if robot has no velocity at all
+   if(magnitude == 0.0){
+      vel_pub.publish(vel_out);
+      return;
    }
+   
+   vel_out.linear.x = current_input_vel.linear.x / magnitude * vel_max;
+   vel_out.linear.y = current_input_vel.linear.y / magnitude * vel_max;
+   vel_out.linear.z = current_input_vel.linear.z / magnitude * vel_max;
+   
+
+   //calculate dot product between forward vector and normalized velocity vector
+   //since all the other entries of the forward vector are zero the dot product is just 1 times the x component of the normalized velocity
+   double dot = current_input_vel.linear.x/magnitude;
+   
+   //determine the index of the scan entry towards the motion direction
+   double sign = 1.0;
+   if(current_input_vel.linear.y < 0.0){
+      sign = -1.0;
+   }
+   double angle_rad = acos(dot)*sign;
+   double angle_deg = angle_rad * 180/M_PI;
+   int dir_idx = 122 + (int)(angle_rad/0.0163934417);
+   
+   std::cout << "Angle: " << angle_deg << " Index: " << dir_idx << std::endl;
+
+   //skip calculations and don't slow down when moving in a direction not covered by the sensor
+   if(dir_idx < 0 || dir_idx >= 245){
+      vel_pub.publish(vel_out);
+      return;
+   }
+
    //check the smallest distance for rougly 30 degree angle around the axis of motion
-   double distance = scan.ranges[57];
-   for(int i=58; i < 88; i++){
+   double distance = 1000.0;
+   for(int i=dir_idx; i > dir_idx - 15 ; i--){
+      if(i < 0){
+         break;
+      }
+      
       if(scan.ranges[i] < distance){
          distance = scan.ranges[i];
       }
    }
-   //std::cout << "Distance: " << distance << std::endl;
+   for(int i=dir_idx; i < dir_idx + 15 ; i++){
+      if(i >= 245){
+         break;
+      }
+      
+      if(scan.ranges[i] < distance){
+         distance = scan.ranges[i];
+      }
+   }
+   std::cout << "Distance: " << distance << std::endl;
    
    //set the linear velocity to zero, if robot is too close to an obstacle
    if(distance < dist_stop){
@@ -47,8 +91,6 @@ void sensorMeasurementCallback(const sensor_msgs::LaserScan &scan)
       //std::cout << "Scaling Factor: " << scaling << std::endl;
    }
    vel_pub.publish(vel_out);
-
-   std::cout << vel_out.linear << std::endl;
 }
 
 void inputVelocityCallback(const geometry_msgs::Twist &vel_in)
@@ -62,13 +104,13 @@ int main(int argc, char **argv)
    ros::NodeHandle n("~");
    ros::Subscriber scan_sub = n.subscribe("/scan", 10, sensorMeasurementCallback);
    ros::Subscriber vel_sub = n.subscribe("/input/cmd_vel", 10, inputVelocityCallback);
-   
-   vel_pub = n.advertise<geometry_msgs::Twist>("/pioneer/cmd_vel", 1);
-   
+
    ros::param::param<double>("/vel_max", vel_max, 0.5);
    ros::param::param<double>("/dist_stop", dist_stop, 0.3);
    ros::param::param<double>("/dist_decelerate", dist_decelerate, 2.1);
-   std::cout << "Param: " << vel_max << std::endl;
+   ros::param::param<std::string>("/cmd_out_topic", cmd_out_topic, "/cmd_vel");
+
+   vel_pub = n.advertise<geometry_msgs::Twist>(cmd_out_topic, 1);
    
    ros::Rate loop_rate(50);
    while (ros::ok())
