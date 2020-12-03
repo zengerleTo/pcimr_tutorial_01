@@ -5,7 +5,7 @@ import numpy as np
 
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Point, Quaternion
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, MapMetaData
 from visualization_msgs.msg import Marker
 from std_msgs.msg import String
 
@@ -61,6 +61,8 @@ class discrete_bayes_filter:
         self.pub_grid_map.info.height = self.map_height
         self.pub_grid_map.info.width = self.map_width
 
+        self.initialized = False
+
     # fill the probability grid
     # and store the ground truth distances for each grid cell
     def precomputation(self):
@@ -70,10 +72,10 @@ class discrete_bayes_filter:
         for x in range(self.map_height):
             for y in range(self.map_width):
                 if self.map[x, y] == 0:
-                    free += 1
+                    free += 1.0
                     
                     # set the probability to 1 if grid cell is free, normalize later
-                    self.probability_grid_map[x, y] = 1
+                    self.probability_grid_map[x, y] = 1.0
 
                     dist_n = 0
                     dist_e = 0
@@ -115,9 +117,14 @@ class discrete_bayes_filter:
         for x in range(self.map_height):
             for y in range(self.map_width):
                 self.probability_grid_map[x, y] /= free
+        self.initialized = True
+        print(self.probability_grid_map)
 
     #perform a prediction step based on the intended move direction
     def prediction_step(self):
+        if not self.initialized:
+            return
+
         #get probabilities for actual movement directions
         if self.move_input == 'N':
             self.prob_move_n = self.motion_probs[0] #forward
@@ -149,7 +156,7 @@ class discrete_bayes_filter:
         probability_grid_map_old = np.copy(self.probability_grid_map)
         for x in range(self.map_height):
             for y in range(self.map_width):
-                if probability_grid_map_old[x, y] != 0:
+                if probability_grid_map_old[x, y] != 0.0:
                     # movement north
                     if self.map[x+1, y] != 100:
                         self.probability_grid_map[x+1,y] += probability_grid_map_old[x, y] * self.prob_move_n
@@ -179,6 +186,9 @@ class discrete_bayes_filter:
      
     #perform a correction step, based on sensor measurements
     def correction_step(self):
+        if not self.initialized:
+            return
+
         for pos_x in range(self.map_height):
             for y in range(self.map_width):
 
@@ -200,12 +210,29 @@ class discrete_bayes_filter:
                                 self.probability_grid_map[pos_x, y] *= self.prob_scan_oneoff
         
         #normalize
-        self.probability_grid_map /= sum(sum(probability_grid_map))
+        self.probability_grid_map /= sum(sum(self.probability_grid_map))
 
         # publish probability grid map
-        self.pub_grid_map.data = self.probability_grid_map.astype(int)
+        prob_grid_map_copy = np.copy(self.probability_grid_map)
+        prob_grid_map_copy = prob_grid_map_copy.astype('float64')
+        factor = 100/np.max(prob_grid_map_copy)
+        prob_grid_map_copy[prob_grid_map_copy > 0] *= factor
+
+        prob_grid_map_copy = np.array(np.transpose(prob_grid_map_copy), dtype=np.int8)
+        
+        self.pub_grid_map.data = prob_grid_map_copy.ravel()
+        self.pub_grid_map.info = MapMetaData()
+        self.pub_grid_map.info.height = self.map_height
+        self.pub_grid_map.info.width = self.map_width
+
+        '''
+        self.pub_grid_map.data = self.probability_grid_map.ravel()*100
+        self.pub_grid_map.data  = self.pub_grid_map.data.astype(int)
         self.pub_grid_map.data = np.array(self.pub_grid_map.data.flatten())
         self.grid_pub.publish(self.pub_grid_map)
+        '''
+        self.grid_pub.publish(self.pub_grid_map)
+        print(self.pub_grid_map)
 
         # determine cell with maximum prediction value and publish it
         prediction_max = self.probability_grid_map.argmax()
@@ -225,12 +252,18 @@ class discrete_bayes_filter:
         rospy.wait_for_message('/map', String)
         self.precomputation()
 
+        #rospy.wait_for_message('/scan', LaserScan)
+        #self.correction_step()
+
         while not rospy.is_shutdown():
+            pass
+        '''
             rospy.wait_for_message('/move', String)
             rospy.wait_for_message('/scan', LaserScan)
 
             self.prediction_step()
             self.correction_step()
+        '''
 
     #callback functions
     def map_callback(self, OccupancyGrid):
@@ -239,9 +272,12 @@ class discrete_bayes_filter:
 
     def scan_callback(self, LaserScan):
         self.scan_input = np.array(LaserScan.ranges)
+        self.correction_step()
 
     def move_callback(self, String):
         self.move_input= String.data
+        self.prediction_step()
+
 if __name__ == "__main__":
     rospy.init_node('discrete_bayes_filter')
 
