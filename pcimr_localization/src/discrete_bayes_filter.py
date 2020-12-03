@@ -118,7 +118,6 @@ class discrete_bayes_filter:
             for y in range(self.map_width):
                 self.probability_grid_map[x, y] /= free
         self.initialized = True
-        print(self.probability_grid_map)
 
     #perform a prediction step based on the intended move direction
     def prediction_step(self):
@@ -225,14 +224,7 @@ class discrete_bayes_filter:
         self.pub_grid_map.info.height = self.map_height
         self.pub_grid_map.info.width = self.map_width
 
-        '''
-        self.pub_grid_map.data = self.probability_grid_map.ravel()*100
-        self.pub_grid_map.data  = self.pub_grid_map.data.astype(int)
-        self.pub_grid_map.data = np.array(self.pub_grid_map.data.flatten())
         self.grid_pub.publish(self.pub_grid_map)
-        '''
-        self.grid_pub.publish(self.pub_grid_map)
-        print(self.pub_grid_map)
 
         # determine cell with maximum prediction value and publish it
         prediction_max = self.probability_grid_map.argmax()
