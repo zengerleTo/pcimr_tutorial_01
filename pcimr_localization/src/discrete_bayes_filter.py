@@ -221,9 +221,8 @@ class discrete_bayes_filter:
         self.marker_pub.publish(self.pos_marker)
 
     def run(self, rate: float = 10):
-
-        rospy.sleep(1)
-
+        #rospy.sleep(1)
+        rospy.wait_for_message('/map', String)
         self.precomputation()
 
         while not rospy.is_shutdown():
