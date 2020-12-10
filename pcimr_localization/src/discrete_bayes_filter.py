@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 import numpy as np
@@ -57,9 +57,12 @@ class discrete_bayes_filter:
 
         #init the output OccupancyGrid
         self.pub_grid_map = OccupancyGrid()
+        self.pub_grid_map.header.frame_id = 'map'
+        self.pub_grid_map.header.seq = 0
+        self.pub_grid_map.info.map_load_time = rospy.Time.now()
         self.pub_grid_map.info.resolution = 1
-        self.pub_grid_map.info.height = self.map_height
-        self.pub_grid_map.info.width = self.map_width
+        self.pub_grid_map.info.height = 20
+        self.pub_grid_map.info.width = 20
 
         self.initialized = False
 
@@ -217,12 +220,7 @@ class discrete_bayes_filter:
         factor = 100/np.max(prob_grid_map_copy)
         prob_grid_map_copy[prob_grid_map_copy > 0] *= factor
 
-        prob_grid_map_copy = np.array(np.transpose(prob_grid_map_copy), dtype=np.int8)
-        
-        self.pub_grid_map.data = prob_grid_map_copy.ravel()
-        self.pub_grid_map.info = MapMetaData()
-        self.pub_grid_map.info.height = self.map_height
-        self.pub_grid_map.info.width = self.map_width
+        self.pub_grid_map.data = prob_grid_map_copy.flatten().astype(int).tolist()
 
         self.grid_pub.publish(self.pub_grid_map)
 

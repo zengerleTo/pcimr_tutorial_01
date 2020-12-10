@@ -8,11 +8,11 @@ project(pcimr_localization)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  roscpp
-  rospy
+  geometry_msgs
+  nav_msgs
   std_msgs
-  message_generation
-  pcimr_simulation
+  rospy
+  visualization_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -120,7 +120,6 @@ catkin_package(
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
-#  ${pcimr_simulation_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
