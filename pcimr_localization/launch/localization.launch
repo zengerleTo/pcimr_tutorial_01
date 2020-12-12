@@ -1,4 +1,0 @@
-<launch>
-    <include file="$(find pcimr_navigation)/launch/navigation.launch" />
-    <node pkg="pcimr_localization" name="pcimr_localization" type="discrete_bayes_filter.py" output="screen" />
-</launch>
