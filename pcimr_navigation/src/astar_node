@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+
+import rospy
+import numpy as np
+from geometry_msgs.msg import Point, Quaternion, PoseStamped
+from nav_msgs.msg import OccupancyGrid, MapMetaData, Path
+from visualization_msgs.msg import Marker
+from std_msgs.msg import String
+
+import heapq
+
+class Node():
+    def __init__(self, parent=None, position=None):
+        self.parent = parent
+        self.position = position
+
+        self.g = 0
+        self.h = 0
+        self.f = 0
+
+    def __eq__(self, other):
+        return self.f == other.f
+    
+    def __gt__(self, other):
+        return self.f > other.f
+    
+
+
+class astar_node:
+
+    def __init__(self):
+        # init subscribers
+        self.map_sub = rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
+        self.pos_sub = rospy.Subscriber('/robot_pos', Point, self.pos_callback)
+        self.goal_sub = rospy.Subscriber('/move_base_simple/goal', PoseStamped, self.goal_callback)
+
+        # init publishers
+        self.path_pub = rospy.Publisher('/global_path', Path, queue_size=10)
+        self.goal_marker_pub = rospy.Publisher('/visualization/goal', Marker, queue_size=10)
+        self.path_marker_pub = rospy.Publisher('/visualization/plan', Marker, queue_size=10)
+
+        #init the input variables
+        self.map_input = OccupancyGrid()
+        self.pos_input = Point()
+        self.goal_input = Point()
+
+        #init map dimensions
+        self.map_width = 0
+        self.map_height = 0
+
+        self.path = []
+
+        #init marker
+        self.goal_marker = Marker()
+        self.goal_marker.header.frame_id = "map"
+        self.goal_marker.ns = "navigation"
+        self.goal_marker.id = 0
+        self.goal_marker.type = Marker.CUBE
+        self.goal_marker.action = Marker.ADD
+        self.goal_marker.scale.x = 1
+        self.goal_marker.scale.y = 1
+        self.goal_marker.scale.z = 0.2
+        self.goal_marker.color.a = 1.0
+        self.goal_marker.color.r = 1.0
+        self.goal_marker.color.g = 0.0
+        self.goal_marker.color.b = 0.0
+        self.goal_marker.pose.orientation = Quaternion(0, 0, 0, 1)
+
+        self.path_marker = Marker()
+        self.path_marker.header.frame_id = "map"
+        self.path_marker.ns = "navigation"
+        self.path_marker.id = 0
+        self.path_marker.type = Marker.LINE_STRIP
+        self.path_marker.action = Marker.ADD
+        self.path_marker.scale.x = 0.3
+        self.path_marker.color.a = 1.0
+        self.path_marker.color.r = 0.0
+        self.path_marker.color.g = 0.0
+        self.path_marker.color.b = 1.0
+        self.path_marker.pose.orientation = Quaternion(0, 0, 0, 1)
+
+        #init start and end nodes
+        self.start_node = Node()
+        self.end_node = Node()
+
+        #init lists
+        self.openlist = []
+        self.closedlist = []
+
+    #callback functions
+    def map_callback(self, OccupancyGrid):
+        self.map_width = OccupancyGrid.info.width
+        self.map_height = OccupancyGrid.info.height
+        self.map_input = np.array(OccupancyGrid.data)
+        self.map = np.transpose(self.map_input.reshape(self.map_width, self.map_height))
+
+    def pos_callback(self, Point):
+        self.pos_input = Point
+
+    def goal_callback(self, PoseStamped):
+        self.goal_input.x = int(PoseStamped.pose.position.x)
+        self.goal_input.y = int(PoseStamped.pose.position.y)
+
+        self.goal_marker.pose.position.x = self.goal_input.x + 0.5
+        self.goal_marker.pose.position.y = self.goal_input.y + 0.5
+        self.goal_marker_pub.publish(self.goal_marker)
+
+        self.astar()
+
+    def astar(self):
+        self.start_node = Node(None, [float(self.pos_input.x), int(self.pos_input.y)])
+        self.end_node = Node(None, [float(self.goal_input.x), int(self.goal_input.y)])
+        
+        #validity check
+        if self.map[int(self.end_node.position[0])][int(self.end_node.position[1])] != 0:
+            return
+
+        #list init
+        self.openlist = []
+        self.closedlist = []
+        self.path = []
+
+        #astar algorithm
+        heapq.heappush(self.openlist, (0, self.start_node))
+        while len(self.openlist) > 0:
+            current_node = heapq.heappop(self.openlist)[1]
+
+            if current_node.position == self.end_node.position:
+                path_node = current_node
+                while path_node is not None:
+                    print(path_node.position)
+                    self.path.append(path_node.position)
+                    path_node = path_node.parent
+                self.path = self.path[::-1]
+                break
+            
+            self.closedlist.append(current_node)
+            self.expand_node(current_node)
+
+        if len(self.path) == 0:
+            return
+
+        #publish path and path marker
+        self.path_marker.points.clear()
+        path_msg = Path()
+
+        for node_pos in self.path:
+            
+            self.path_marker.points.append(Point(node_pos[0]+0.5, node_pos[1]+0.5, 0))
+
+            pose = PoseStamped()
+            pose.pose.position.x = node_pos[0]
+            pose.pose.position.y = node_pos[1]
+            path_msg.poses.append(pose)
+        
+        self.path_pub.publish(path_msg)
+        self.path_marker_pub.publish(self.path_marker)
+
+
+    def expand_node(self, current_node):
+        self.check_neighbor_cell(current_node, current_node.position[0] - 1, current_node.position[1])
+        self.check_neighbor_cell(current_node, current_node.position[0] + 1, current_node.position[1])
+        self.check_neighbor_cell(current_node, current_node.position[0], current_node.position[1] - 1)
+        self.check_neighbor_cell(current_node, current_node.position[0], current_node.position[1] + 1)
+
+    def check_neighbor_cell(self, current_node, x, y):
+        #check boundaries
+        if x < 0 or x >= self.map_width or y < 0 or y >= self.map_height:
+            return
+
+        #check occupancy
+        if self.map[int(x)][int(y)] != 0:
+            return
+
+        #create candidate node
+        candidate_node = Node(current_node, [x, y])
+        candidate_node.g = current_node.g + 1
+        candidate_node.h = (abs(x - self.end_node.position[0]) + abs(x - self.end_node.position[0]))
+        candidate_node.f = candidate_node.g + candidate_node.h
+
+        #check lists for candidate_node
+        for i in range(len(self.closedlist)):
+            if self.closedlist[i].position == candidate_node.position:
+                return
+        
+        for i in range(len(self.openlist)):
+            if self.openlist[i][1].position == candidate_node.position:
+                if current_node.g < candidate_node.g:
+                    candidate_node.g = current_node.g + 1
+                    candidate_node.parent = current_node
+                return
+        
+        heapq.heappush(self.openlist, (int(candidate_node.f), candidate_node))
+
+
+    def run(self, rate: float = 10):
+        rospy.wait_for_message('/move_base_simple/goal', PoseStamped)
+        while not rospy.is_shutdown():
+            pass
+
+if __name__ == "__main__":
+    rospy.init_node('astar_node')
+
+    astar_planner = astar_node()
+    astar_planner.run(rate = 10)
